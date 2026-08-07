@@ -1,4 +1,3 @@
-#!/bin/bash
 # Written by Jacques Boucher
 # jjrboucher@gmail.com
 #
@@ -23,18 +22,18 @@ a=$(find . -iname "*.pdf") # Find all PDFs recursively from current folder
 echo "File	Create Date	Modify Date	# of images	Author	Producer	# of fonts	# of versions	hash" >$output_file # write headers to csv
 for i in $a # loop through each item
 do
-	image_count=$(pdfimages -list "$i" | wc -l) # get only # of lines in output (# of images)
+	image_count=$(pdfimages -list $i | wc -l) # get only # of lines in output (# of images)
 	image_count=$((image_count-2)) # substract 2 lines - headers - to get actual # of images
-	author=$(exiftool -S -s -author "$i") # get author of the document without the tag name
-	create_date=$(exiftool -S -s -CreateDate "$i")
-	modify_date=$(exiftool -S -s -ModifyDate "$i")
-	producer=$(exiftool -S -s -Producer "$i")
-	font_count=$(pdffonts "$i" | wc -l) # get the # of fonts - but includes 2 additional lines for header.
+	author=$(exiftool -S -s -author $i) # get author of the document without the tag name
+	create_date=$(exiftool -S -s -CreateDate $i)
+	modify_date=$(exiftool -S -s -ModifyDate $i)
+	producer=$(exiftool -S -s -Producer $i)
+	font_count=$(pdffonts $i | wc -l) # get the # of fonts - but includes 2 additional lines for header.
 	font_count=$((font_count-2)) # remove the headers
-	hash=$(md5sum "$i" | cut -d " " -f1)
+	hash=$(md5sum $i | cut -d " " -f1)
 
 	offsets=($(grep --only-matching --byte-offset --text "%%EOF" "$i"| cut -d : -f 1)) # find all %%EOF instances in the PDF
-	if [ ${#offsets[@]} -gt 0 ] && [ ${offsets[0]} -lt 600 ]; then
+	if [ ${offsets[0]} -lt 600 ]; then
 		unset offsets[0] # removes the first element in the array, as it's a false positive.
 	fi
 	version_count=${#offsets[@]} # Number of instances of %%EOF

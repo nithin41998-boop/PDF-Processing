@@ -152,35 +152,10 @@ pdfImages() {
 		blankLine
 	else
 		commandNotFound "pdfimages"
-		commandsExecuted=$((commandsExecuted+1000))
+		commandsExecuted=$commandExecuted+1000
 	fi
 }
 
-checkDependencies() { # checks all required tools upfront and reports what's missing
-        local allTools=("pdfinfo" "exiftool" "pdfimages" "pdfsig" "pdfid" "pdf-parser" "pdffonts" "pdfdetach")
-        local missingTools=()
-        for tool in "${allTools[@]}"; do
-                which "$tool" >/dev/null 2>&1
-                if [ $? -ne 0 ]; then
-                        missingTools+=("$tool")
-                fi
-        done
-        if [ ${#missingTools[@]} -gt 0 ]; then
-                echo -e "${YELLOW}Warning!${NOCOLOUR} The following tools were not found and their steps will be skipped:"
-                for tool in "${missingTools[@]}"; do
-                        echo -e "  - ${RED}$tool${NOCOLOUR}"
-                done
-                echo ""
-                read -p "Do you want to continue anyway (y/n)? [y] " continueAnyway
-                continueAnyway=$(echo "$continueAnyway" | tr '[:upper:]' '[:lower:]')
-                if [ "$continueAnyway" == "n" ]; then
-                        echo "Exiting."
-                        exit 1
-                fi
-        else
-                echo -e "${GREEN}All required tools found.${NOCOLOUR}"
-        fi
-}
 checkPDF() {
 	processThisPDF="y" # defaults to yes
 	testPDF="$(pdfinfo "$1" 2>/dev/null)"
@@ -198,7 +173,7 @@ checkPDF() {
 	fi
 	}
 
-while getopts ":d:f:p:o:rv" opt; do
+while getopts ":d:f:p:rv" opt; do
 	case $opt in
 		d)
 			switch=$opt
@@ -211,14 +186,6 @@ while getopts ":d:f:p:o:rv" opt; do
 				exit $noFolder
 			fi
 			;;
-o)
-                        outputFolder="$OPTARG"
-                        if [ -z "$outputFolder" ]; then
-                                echo -e "You ${RED}did not${NOCOLOUR} provide a ${RED}folder${NOCOLOUR} with the -o switch."
-                                IFS="$OIFS"
-                                exit $noFolder
-                        fi
-                        ;;
 		f)
 			switch=$opt
 			filename="$OPTARG"
@@ -274,7 +241,7 @@ o)
 	esac
 done
 
-if [ -z "$outputFolder" ]; then outputFolder="report_$currentDateTime"; fi
+outputFolder="report_$currentDateTime"
 
 if [ -z "$switch" ]; then #switch is still blank, thus not provided
 	echo "Did not provide the required switch."	
@@ -283,7 +250,6 @@ if [ -z "$switch" ]; then #switch is still blank, thus not provided
 	exit $missingSwitch
 fi
 
-checkDependencies
 # if a folder is passed, assign output of "find" command to files.
 
 if [ ! -z $folder ]; then
@@ -316,7 +282,6 @@ fileCount=0
 for fileToProcess in $filename # loop through each file
 	do
 	fileCount=$((fileCount+1))
-        echo -e "\n${GREEN}Processing file $fileCount of $totalFiles${NOCOLOUR}: $fileToProcess"
 	filenamenoext="${fileToProcess%.*}"
 	filenamenoext="${filenamenoext##*/}"
 	extension="${fileToProcess##*.}"
@@ -362,7 +327,7 @@ for fileToProcess in $filename # loop through each file
 		blankLine
 	else
 		commandNotFound "pdfinfo"
-		commandsExecuted=$((commandsExecuted+10))
+		commandsExecuted=$commandExecuted+10
 	fi
 
 	# exiftool
@@ -380,7 +345,7 @@ for fileToProcess in $filename # loop through each file
 		blankLine
 	else
 		commandNotFound "exiftool"
-		commandsExecuted=$((commandsExecuted+100))
+		commandsExecuted=$commandExecuted+100
 	fi
 
 	#pdfimages
@@ -407,7 +372,7 @@ for fileToProcess in $filename # loop through each file
 		blankLine
 	else
 		commandNotFound "pdfsig"
-		commandsExecuted=$((commandsExecuted+10000))
+		commandsExecuted=$commandExecuted+10000
 	fi
 
 	#pdfid
@@ -425,7 +390,7 @@ for fileToProcess in $filename # loop through each file
 		blankLine
 	else
 		commandNotFound "pdfid"
-		commandsExecuted=$((commandsExecuted+100000))
+		commandsExecuted=$commandExecuted+100000
 	fi
 
 	#pdfparser
@@ -443,7 +408,7 @@ for fileToProcess in $filename # loop through each file
 		blankLine
 	else
 		commandNotFound "pdf-parser"
-		commandsExecuted=$((commandsExecuted+1000000))
+		commandsExecuted=$commandExecuted+1000000
 	fi
 
 	#pdffonts
@@ -461,7 +426,7 @@ for fileToProcess in $filename # loop through each file
 		blankLine
 	else
 		commandNotFound "pdffonts"
-		commandsExecuted=$((commandsExecuted+10000000))
+		commandsExecuted=$commandExecuted+10000000
 	fi
 
 	#pdfdetach
@@ -489,7 +454,7 @@ for fileToProcess in $filename # loop through each file
 		fi
 	else
 		commandNotFound "pdfdetach"
-		commandsExecuted=$((commandsExecuted+10000000))
+		commandsExecuted=$commandExecuted+10000000
 	fi
 
 	blankLine
@@ -552,7 +517,7 @@ for fileToProcess in $filename # loop through each file
 					
 					checkPDF "$newfile"
 					
-					if [ "$pdfValidation" == "False" ] && [ "$processThisPDF" != "y" ]; then
+					if [ "pdfValidation" == "False" ] && [ "processThisPDF" != "y" ]; then
 						echo "User opted to not process \"$newfile\" as it does not appear to be a valid PDF." >> "$logfile"
 						continue # skip out of the loop
 					fi

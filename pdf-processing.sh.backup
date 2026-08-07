@@ -137,7 +137,7 @@ pdfImages() {
 		blankLine
 	else
 		commandNotFound "pdfimages"
-		commandsExecuted=$((commandsExecuted+1000))
+		commandsExecuted=$commandExecuted+1000
 	fi
 }
 
@@ -248,7 +248,7 @@ then
 	blankLine
 else
 	commandNotFound "pdfinfo"
-	commandsExecuted=$((commandsExecuted+10))
+	commandsExecuted=$commandExecuted+10
 fi
 
 # exiftool
@@ -266,7 +266,7 @@ then
 	blankLine
 else
 	commandNotFound "exiftool"
-	commandsExecuted=$((commandsExecuted+100))
+	commandsExecuted=$commandExecuted+100
 fi
 
 #pdfimages
@@ -286,7 +286,7 @@ then
 	blankLine
 else
 	commandNotFound "pdfsig"
-	commandsExecuted=$((commandsExecuted+10000))
+	commandsExecuted=$commandExecuted+10000
 fi
 
 #pdfid
@@ -304,7 +304,7 @@ then
 	blankLine
 else
 	commandNotFound "pdfid"
-	commandsExecuted=$((commandsExecuted+100000))
+	commandsExecuted=$commandExecuted+100000
 fi
 
 #pdfparser
@@ -322,7 +322,7 @@ then
 	blankLine
 else
 	commandNotFound "pdf-parser"
-	commandsExecuted=$((commandsExecuted+1000000))
+	commandsExecuted=$commandExecuted+1000000
 fi
 
 #pdffonts
@@ -340,7 +340,7 @@ then
 	blankLine
 else
 	commandNotFound "pdffonts"
-	commandsExecuted=$((commandsExecuted+10000000))
+	commandsExecuted=$commandExecuted+10000000
 fi
 
 #pdfdetach
@@ -368,7 +368,7 @@ then
 	fi
 else
 	commandNotFound "pdfdetach"
-	commandsExecuted=$((commandsExecuted+10000000))
+	commandsExecuted=$commandExecuted+10000000
 fi
 
 blankLine
