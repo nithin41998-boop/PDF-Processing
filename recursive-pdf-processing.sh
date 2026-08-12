@@ -181,6 +181,132 @@ checkDependencies() { # checks all required tools upfront and reports what's mis
                 echo -e "${GREEN}All required tools found.${NOCOLOUR}"
         fi
 }
+detectDocumentType() {
+        local filePath="$1"
+        local isoFallback="$2"
+        local docType=""
+        local fileName=$(basename "$filePath")
+        local textContent=$(pdftotext "$filePath" - 2>/dev/null)
+        local metaContent=$(exiftool -s -Title -Subject -Description -Keywords "$filePath" 2>/dev/null)
+        local combined="$fileName $textContent $metaContent"
+        combined=$(echo "$combined" | tr '[:lower:]' '[:upper:]')
+        if echo "$combined" | grep -q "PASSPORT"; then
+                docType="Passport"
+        elif echo "$combined" | grep -qE "DRIVER.?S? (LICENSE|LICENCE)"; then
+                docType="Driver's License"
+        elif echo "$combined" | grep -qE "(IDENTITY CARD|ID CARD)"; then
+                docType="ID Card"
+        else
+                docType="$isoFallback"
+        fi
+        echo "$docType"
+}
+processImageFile() {
+        local imgPath="$1"
+        local imgFolder="$2"
+        local imgName=$(basename "$imgPath")
+        hashMark "Standalone Image Processing: $imgName"
+        local exifFile="$imgFolder/${imgName}-exif.csv"
+        echo "executing: exiftool -a -G1 -s -ee -csv \"$imgPath\" > \"$exifFile\"" | tee -a "$logfile"
+        exiftool -a -G1 -s -ee -csv "$imgPath" > "$exifFile"
+        echo "executing: sha256sum \"$exifFile\"" | tee -a "$logfile"
+        sha256sum "$exifFile" >> "$logfile"
+        blankLine
+        local geomLine=$(identify -format "%w %h %x %y" "$imgPath" 2>/dev/null)
+        local imgColor=$(identify -format "%[colorspace]" "$imgPath" 2>/dev/null | tr "[:upper:]" "[:lower:]")
+        local imgComp=$(identify -format "%[channels]" "$imgPath" 2>/dev/null | grep -oE "[0-9]+\.[0-9]+" | cut -d. -f1)
+        local imgBpc=$(identify -format "%z" "$imgPath" 2>/dev/null)
+        local imgEnc=$(identify -format "%C" "$imgPath" 2>/dev/null | tr "[:upper:]" "[:lower:]")
+        local width=$(echo "$geomLine" | awk '{print $1}')
+        local height=$(echo "$geomLine" | awk '{print $2}')
+        local xppi=$(echo "$geomLine" | awk '{print int($3+0.5)}')
+        local yppi=$(echo "$geomLine" | awk '{print int($4+0.5)}')
+        local fileSizeBytes=$(stat -c%s "$imgPath")
+        local uncompressedBytes=$(echo "$width $height" | awk '{print $1*$2*3}')
+        local compRatio=$(echo "$fileSizeBytes $uncompressedBytes" | awk '{if($2>0) printf "%.1f", ($1/$2)*100; else print "0.0"}')
+        local sizeDisplay=$(echo "$fileSizeBytes" | awk '{printf "%.0fK", $1/1024}')
+        if [[ "$xppi" =~ ^[0-9]+$ ]] && [[ "$yppi" =~ ^[0-9]+$ ]] && [ "$xppi" -gt 0 ] && [ "$yppi" -gt 0 ]; then
+                local widthMM=$(echo "$width $xppi" | awk '{printf "%.2f", ($1/$2)*25.4}')
+                local heightMM=$(echo "$height $yppi" | awk '{printf "%.2f", ($1/$2)*25.4}')
+                local imgRatio=$(echo "$widthMM $heightMM" | awk '{r=($1>$2)?$1/$2:$2/$1; printf "%.4f", r}')
+                local idRatio="1.5865"
+                local passRatio="1.4205"
+                local idDiff=$(echo "$imgRatio $idRatio" | awk '{printf "%.2f", (($1>$2)?($1-$2)/$2:($2-$1)/$2)*100}')
+                local passDiff=$(echo "$imgRatio $passRatio" | awk '{printf "%.2f", (($1>$2)?($1-$2)/$2:($2-$1)/$2)*100}')
+                local bestDiff=$(echo "$idDiff $passDiff" | awk '{m=($1<$2)?$1:$2; printf "%.2f", m}')
+                local isoFormat=$(echo "$idDiff $passDiff" | awk '{print ($1<$2)?"ID-1 Format":"ID-3 Format"}')
+                local closestMatch=$(detectDocumentType "$imgPath" "$isoFormat")
+                local sizeStatus="Pass"
+                local sizeIsPass=$(echo "$bestDiff" | awk '{print ($1<2)?1:0}')
+                local sizeIsWarn=$(echo "$bestDiff" | awk '{print ($1<=5)?1:0}')
+                if [ "$sizeIsPass" -eq 1 ]; then
+                        sizeStatus="Pass"
+                elif [ "$sizeIsWarn" -eq 1 ]; then
+                        sizeStatus="Warning"
+                else
+                        sizeStatus="Fail"
+                fi
+                echo "$imgName,,,image,$width,$height,$imgColor,$imgComp,$imgBpc,$imgEnc,,,$xppi,$yppi,$sizeDisplay,$compRatio%,$widthMM,$heightMM,$imgRatio,$closestMatch,$bestDiff%,$sizeStatus" >> "$dimensionSummaryFile"
+        fi
+}
+checkImageDimensions() {
+        local pdfPath="$1"
+        local pdfName=$(basename "$pdfPath")
+        local imageList=$(pdfimages -list "$pdfPath" 2>/dev/null | tail -n +3)
+        echo "$imageList" | while read -r line; do
+                local page=$(echo "$line" | awk '{print $1}')
+                local imgNum=$(echo "$line" | awk '{print $2}')
+                local type=$(echo "$line" | awk '{print $3}')
+                local width=$(echo "$line" | awk '{print $4}')
+                local height=$(echo "$line" | awk '{print $5}')
+                local color=$(echo "$line" | awk '{print $6}')
+                local comp=$(echo "$line" | awk '{print $7}')
+                local bpc=$(echo "$line" | awk '{print $8}')
+                local enc=$(echo "$line" | awk '{print $9}')
+                local interp=$(echo "$line" | awk '{print $10}')
+                local objid=$(echo "$line" | awk '{print $11, $12}')
+                local xppi=$(echo "$line" | awk '{print $13}')
+                local yppi=$(echo "$line" | awk '{print $14}')
+                local size=$(echo "$line" | awk '{print $15}')
+                local ratio=$(echo "$line" | awk '{print $16}')
+                if [[ "$xppi" =~ ^[0-9]+$ ]] && [[ "$yppi" =~ ^[0-9]+$ ]]; then
+                        if [ "$xppi" -gt 0 ] && [ "$yppi" -gt 0 ]; then
+                                local diff=$(echo "$xppi $yppi" | awk '{d=($1>$2)?($1-$2)/$1*100:($2-$1)/$2*100; printf "%.2f", d}')
+                                local status="Pass"
+                                local isPass=$(echo "$diff" | awk '{print ($1<3)?1:0}')
+                                local isWarn=$(echo "$diff" | awk '{print ($1<=5)?1:0}')
+                                if [ "$isPass" -eq 1 ]; then
+                                        status="Pass"
+                                elif [ "$isWarn" -eq 1 ]; then
+                                        status="Warning"
+                                else
+                                        status="Fail"
+                                fi
+                                local widthMM=$(echo "$width $xppi" | awk '{printf "%.2f", ($1/$2)*25.4}')
+                                local heightMM=$(echo "$height $yppi" | awk '{printf "%.2f", ($1/$2)*25.4}')
+                                local imgRatio=$(echo "$widthMM $heightMM" | awk '{r=($1>$2)?$1/$2:$2/$1; printf "%.4f", r}')
+                                local idRatio="1.5865"
+                                local passRatio="1.4205"
+                                local idDiff=$(echo "$imgRatio $idRatio" | awk '{printf "%.2f", (($1>$2)?($1-$2)/$2:($2-$1)/$2)*100}')
+                                local passDiff=$(echo "$imgRatio $passRatio" | awk '{printf "%.2f", (($1>$2)?($1-$2)/$2:($2-$1)/$2)*100}')
+                                local bestDiff=$(echo "$idDiff $passDiff" | awk '{m=($1<$2)?$1:$2; printf "%.2f", m}')
+                                local isoFormat=$(echo "$idDiff $passDiff" | awk '{print ($1<$2)?"ID-1 Format":"ID-3 Format"}')
+                                local closestMatch=$(detectDocumentType "$pdfPath" "$isoFormat")
+                                local sizeStatus="Pass"
+                                local sizeIsPass=$(echo "$bestDiff" | awk '{print ($1<2)?1:0}')
+                                local sizeIsWarn=$(echo "$bestDiff" | awk '{print ($1<=5)?1:0}')
+                                if [ "$sizeIsPass" -eq 1 ]; then
+                                        sizeStatus="Pass"
+                                elif [ "$sizeIsWarn" -eq 1 ]; then
+                                        sizeStatus="Warning"
+                                else
+                                        sizeStatus="Fail"
+                                fi
+                                echo "$pdfName,$page,$imgNum,$type,$width,$height,$color,$comp,$bpc,$enc,$interp,$objid,$xppi,$yppi,$size,$ratio,$widthMM,$heightMM,$imgRatio,$closestMatch,$bestDiff%,$sizeStatus" >> "$dimensionSummaryFile"
+                        fi
+                fi
+        done
+}
 checkPDF() {
 	processThisPDF="y" # defaults to yes
 	testPDF="$(pdfinfo "$1" 2>/dev/null)"
@@ -288,14 +414,17 @@ checkDependencies
 
 if [ ! -z $folder ]; then
 	if [ $recursive -eq 1 ]; then
-		filename=$(find $folder -iname "*.pdf")
+                filename=$(find $folder \( -iname "*.pdf" -o -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" \))
 	else
-		filename=$(find $folder -maxdepth 1 -iname "*.pdf")
+                filename=$(find $folder -maxdepth 1 \( -iname "*.pdf" -o -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" \))
 	fi
 fi
 
 mkdir $outputFolder
 
+
+dimensionSummaryFile="$outputFolder/dimension_check_summary.csv"
+   echo "PDF File,Page,Image #,Type,Width,Height,Color,Comp,BPC,Enc,Interp,Object ID,X-PPI,Y-PPI,Size,Ratio,Width(mm),Height(mm),Image Ratio,Closest Match,Ratio Deviation,Size Match Status" > "$dimensionSummaryFile"
 logfile="$outputFolder/processing_results.log"
 
 hashMark "Tombstone Info"
@@ -328,6 +457,10 @@ for fileToProcess in $filename # loop through each file
 	fileFolder="$outputFolder/$fileCount-$filenamenoext"
 	mkdir $fileFolder
 	echo "sha256 hash: $(sha256sum "$fileToProcess" | cut -d " " -f1)" >> "$logfile"
+        if [[ "$extension" =~ ^(jpg|jpeg|png|JPG|JPEG|PNG)$ ]]; then
+                processImageFile "$fileToProcess" "$fileFolder"
+                continue
+        fi
 	blankLine
 	
 	checkPDF "$fileToProcess"
@@ -385,6 +518,7 @@ for fileToProcess in $filename # loop through each file
 
 	#pdfimages
 	pdfImages "$fileToProcess" "3" "$fileFolder/${fileToProcess##*/}-pdfimages"
+        checkImageDimensions "$fileToProcess"
 
 	#pdfsig
 
@@ -599,6 +733,16 @@ done
 
 echo -e "\n###############################################################"
 echo -e "Log file written to: ${GREEN}'$logfile'.${NOCOLOUR}"
+echo ""
+echo -e "${GREEN}###### Image Dimension Check Summary ######${NOCOLOUR}"
+if [ -f "$dimensionSummaryFile" ]; then
+        passCount=$(grep -c ",Pass$" "$dimensionSummaryFile")
+        warnCount=$(grep -c ",Warning$" "$dimensionSummaryFile")
+        failCount=$(grep -c ",Fail$" "$dimensionSummaryFile")
+        echo -e "${GREEN}Pass: $passCount${NOCOLOUR}   ${YELLOW}Warning: $warnCount${NOCOLOUR}   ${RED}Fail: $failCount${NOCOLOUR}"
+        echo "Full details saved to: $dimensionSummaryFile"
+        column -s, -t "$dimensionSummaryFile" 2>/dev/null
+fi
 echo -e "Script finshed at $(date)." >> "$logfile"
 IFS="$OIFS" # restore IFS to original
 exit $commandsExecuted
