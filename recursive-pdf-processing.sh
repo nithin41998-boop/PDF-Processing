@@ -253,6 +253,10 @@ checkImageDimensions() {
         local pdfPath="$1"
         local pdfName=$(basename "$pdfPath")
         local imageList=$(pdfimages -list "$pdfPath" 2>/dev/null | tail -n +3)
+        if [ -z "$imageList" ]; then
+                echo "$pdfName,,,,,,,,,,,,,,,,,,No embedded images - text-based document,,,N/A" >> "$dimensionSummaryFile"
+                return
+        fi
         echo "$imageList" | while read -r line; do
                 local page=$(echo "$line" | awk '{print $1}')
                 local imgNum=$(echo "$line" | awk '{print $2}')
