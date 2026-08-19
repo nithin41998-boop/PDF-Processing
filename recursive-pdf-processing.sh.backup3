@@ -1,5 +1,4 @@
 #!/bin/bash
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ###########################
 # Written by Jacques Boucher
 # jboucher@unicef.org
@@ -187,35 +186,17 @@ detectDocumentType() {
         local isoFallback="$2"
         local docType=""
         local fileName=$(basename "$filePath")
-        local extension="${filePath##*.}"
-        local textContent=""
-        local ocrContent=""
-        if [[ "$extension" =~ ^(pdf|PDF)$ ]]; then
-                textContent=$(pdftotext "$filePath" - 2>/dev/null)
-        fi
-        if [ -z "$textContent" ]; then
-                if [[ "$extension" =~ ^(pdf|PDF)$ ]]; then
-                        local tmpImg="/tmp/ocr_page_$$"
-                        pdftoppm -jpeg -r 150 -f 1 -l 1 "$filePath" "$tmpImg" 2>/dev/null
-                        local renderedFile=$(ls "${tmpImg}"* 2>/dev/null | head -1)
-                        if [ -n "$renderedFile" ]; then
-                                ocrContent=$(tesseract "$renderedFile" - 2>/dev/null)
-                                rm -f "${tmpImg}"*
-                        fi
-                elif [[ "$extension" =~ ^(jpg|jpeg|png|JPG|JPEG|PNG)$ ]]; then
-                        ocrContent=$(tesseract "$filePath" - 2>/dev/null)
-                fi
-        fi
+        local textContent=$(pdftotext "$filePath" - 2>/dev/null)
         local metaContent=$(exiftool -s -Title -Subject -Description -Keywords "$filePath" 2>/dev/null)
-        local combined="$fileName $textContent $ocrContent $metaContent"
+        local combined="$fileName $textContent $metaContent"
         combined=$(echo "$combined" | tr '[:lower:]' '[:upper:]')
-        while IFS='|' read -r pattern label; do
-                if echo "$combined" | grep -qE "$pattern"; then
-                        docType="$label"
-                        break
-                fi
-        done < "$SCRIPT_DIR/document_types.txt"
-        if [ -z "$docType" ]; then
+        if echo "$combined" | grep -q "PASSPORT"; then
+                docType="Passport"
+        elif echo "$combined" | grep -qE "DRIVER.?S? (LICENSE|LICENCE)"; then
+                docType="Driver's License"
+        elif echo "$combined" | grep -qE "(IDENTITY CARD|ID CARD)"; then
+                docType="ID Card"
+        else
                 docType="$isoFallback"
         fi
         echo "$docType"
@@ -273,8 +254,7 @@ checkImageDimensions() {
         local pdfName=$(basename "$pdfPath")
         local imageList=$(pdfimages -list "$pdfPath" 2>/dev/null | tail -n +3)
         if [ -z "$imageList" ]; then
-                local docType=$(detectDocumentType "$pdfPath" "Not a recognized ID document")
-                echo "$pdfName,,,,,,,,,,,,,,,,,,$docType,,N/A" >> "$dimensionSummaryFile"
+                echo "$pdfName,,,,,,,,,,,,,,,,,,No embedded images - text-based document,,,N/A" >> "$dimensionSummaryFile"
                 return
         fi
         echo "$imageList" | while read -r line; do
@@ -448,7 +428,7 @@ mkdir $outputFolder
 
 
 dimensionSummaryFile="$outputFolder/dimension_check_summary.csv"
-   echo "PDF File,Page,Image #,Type,Width,Height,Color,Comp,BPC,Enc,Interp,Object ID,X-PPI,Y-PPI,Size,Ratio,Width(mm),Height(mm),Image Ratio,Type of Document,Ratio Deviation,Size Match Status" > "$dimensionSummaryFile"
+   echo "PDF File,Page,Image #,Type,Width,Height,Color,Comp,BPC,Enc,Interp,Object ID,X-PPI,Y-PPI,Size,Ratio,Width(mm),Height(mm),Image Ratio,Closest Match,Ratio Deviation,Size Match Status" > "$dimensionSummaryFile"
 logfile="$outputFolder/processing_results.log"
 
 hashMark "Tombstone Info"
