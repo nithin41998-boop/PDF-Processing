@@ -208,8 +208,9 @@ detectDocumentType() {
         fi
         local metaContent=$(exiftool -s -Title -Subject -Description -Keywords "$filePath" 2>/dev/null)
         local combined="$fileName $textContent $ocrContent $metaContent"
+        combined=$(echo "$combined" | tr "\n" " ")
         combined=$(echo "$combined" | tr '[:lower:]' '[:upper:]')
-        while IFS='|' read -r pattern label; do
+        while IFS=$'\t' read -r pattern label; do
                 if echo "$combined" | grep -qE "$pattern"; then
                         docType="$label"
                         break
@@ -274,7 +275,7 @@ checkImageDimensions() {
         local imageList=$(pdfimages -list "$pdfPath" 2>/dev/null | tail -n +3)
         if [ -z "$imageList" ]; then
                 local docType=$(detectDocumentType "$pdfPath" "Not a recognized ID document")
-                echo "$pdfName,,,,,,,,,,,,,,,,,,$docType,,N/A" >> "$dimensionSummaryFile"
+                echo "$pdfName,,,,,,,,,,,,,,,,,,,$docType,,N/A" >> "$dimensionSummaryFile"
                 return
         fi
         echo "$imageList" | while read -r line; do
