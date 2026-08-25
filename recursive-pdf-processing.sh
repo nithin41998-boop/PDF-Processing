@@ -182,6 +182,26 @@ checkDependencies() { # checks all required tools upfront and reports what's mis
                 echo -e "${GREEN}All required tools found.${NOCOLOUR}"
         fi
 }
+classifyDocumentLLM() {
+        local filePath="$1"
+        local extension="${filePath##*.}"
+        local imgToClassify="$filePath"
+        local tmpRendered=""
+        if [[ "$extension" =~ ^(pdf|PDF)$ ]]; then
+                tmpRendered="/tmp/llm_classify_$$"
+                pdftoppm -jpeg -r 150 -f 1 -l 1 "$filePath" "$tmpRendered" 2>/dev/null
+                imgToClassify=$(ls "${tmpRendered}"* 2>/dev/null | head -1)
+        fi
+        local result="Unknown"
+        if [ -n "$imgToClassify" ] && [ -f "$imgToClassify" ]; then
+                result=$(python3 "$SCRIPT_DIR/classify_document.py" "$imgToClassify" 2>/dev/null)
+                [ -z "$result" ] && result="Unknown"
+        fi
+        if [ -n "$tmpRendered" ]; then
+                rm -f "${tmpRendered}"*
+        fi
+        echo "$result"
+}
 detectDocumentType() {
         local filePath="$1"
         local isoFallback="$2"
@@ -255,7 +275,7 @@ processImageFile() {
                 local passDiff=$(echo "$imgRatio $passRatio" | awk '{printf "%.2f", (($1>$2)?($1-$2)/$2:($2-$1)/$2)*100}')
                 local bestDiff=$(echo "$idDiff $passDiff" | awk '{m=($1<$2)?$1:$2; printf "%.2f", m}')
                 local isoFormat=$(echo "$idDiff $passDiff" | awk '{print ($1<$2)?"ID-1 Format":"ID-3 Format"}')
-                local closestMatch=$(detectDocumentType "$imgPath" "$isoFormat")
+                local closestMatch=$(classifyDocumentLLM "$imgPath")
                 local sizeStatus="Pass"
                 local sizeIsPass=$(echo "$bestDiff" | awk '{print ($1<2)?1:0}')
                 local sizeIsWarn=$(echo "$bestDiff" | awk '{print ($1<=5)?1:0}')
@@ -266,7 +286,13 @@ processImageFile() {
                 else
                         sizeStatus="Fail"
                 fi
-                echo "$imgName,,,image,$width,$height,$imgColor,$imgComp,$imgBpc,$imgEnc,,,$xppi,$yppi,$sizeDisplay,$compRatio%,$widthMM,$heightMM,$imgRatio,$closestMatch,$bestDiff%,$sizeStatus" >> "$dimensionSummaryFile"
+                local cvOutput=$(python3 "$SCRIPT_DIR/detect_document.py" "$imgPath" --dpi "$xppi" 2>/dev/null)
+                local cvWidthMM=$(echo "$cvOutput" | cut -d, -f3)
+                local cvHeightMM=$(echo "$cvOutput" | cut -d, -f4)
+                local cvRatioDev=$(echo "$cvOutput" | cut -d, -f7)
+                local cvMethod=$(echo "$cvOutput" | cut -d, -f9)
+                local cvStatus=$(echo "$cvOutput" | cut -d, -f8)
+                echo "$imgName,,,image,$width,$height,$imgColor,$imgComp,$imgBpc,$imgEnc,,,$xppi,$yppi,$sizeDisplay,$compRatio%,$widthMM,$heightMM,$imgRatio,$closestMatch,$bestDiff%,$sizeStatus,$cvWidthMM,$cvHeightMM,$cvRatioDev,$cvMethod,$cvStatus" >> "$dimensionSummaryFile"
         fi
 }
 checkImageDimensions() {
@@ -274,7 +300,7 @@ checkImageDimensions() {
         local pdfName=$(basename "$pdfPath")
         local imageList=$(pdfimages -list "$pdfPath" 2>/dev/null | tail -n +3)
         if [ -z "$imageList" ]; then
-                local docType=$(detectDocumentType "$pdfPath" "Not a recognized ID document")
+                local docType=$(classifyDocumentLLM "$pdfPath")
                 echo "$pdfName,,,,,,,,,,,,,,,,,,,$docType,,N/A" >> "$dimensionSummaryFile"
                 return
         fi
@@ -316,7 +342,7 @@ checkImageDimensions() {
                                 local passDiff=$(echo "$imgRatio $passRatio" | awk '{printf "%.2f", (($1>$2)?($1-$2)/$2:($2-$1)/$2)*100}')
                                 local bestDiff=$(echo "$idDiff $passDiff" | awk '{m=($1<$2)?$1:$2; printf "%.2f", m}')
                                 local isoFormat=$(echo "$idDiff $passDiff" | awk '{print ($1<$2)?"ID-1 Format":"ID-3 Format"}')
-                                local closestMatch=$(detectDocumentType "$pdfPath" "$isoFormat")
+                                local closestMatch=$(classifyDocumentLLM "$pdfPath")
                                 local sizeStatus="Pass"
                                 local sizeIsPass=$(echo "$bestDiff" | awk '{print ($1<2)?1:0}')
                                 local sizeIsWarn=$(echo "$bestDiff" | awk '{print ($1<=5)?1:0}')
@@ -449,7 +475,7 @@ mkdir $outputFolder
 
 
 dimensionSummaryFile="$outputFolder/dimension_check_summary.csv"
-   echo "PDF File,Page,Image #,Type,Width,Height,Color,Comp,BPC,Enc,Interp,Object ID,X-PPI,Y-PPI,Size,Ratio,Width(mm),Height(mm),Image Ratio,Type of Document,Ratio Deviation,Size Match Status" > "$dimensionSummaryFile"
+   echo "PDF File,Page,Image #,Type,Width,Height,Color,Comp,BPC,Enc,Interp,Object ID,X-PPI,Y-PPI,Size,Ratio,Width(mm),Height(mm),Image Ratio,Type of Document,Ratio Deviation,Size Match Status,CV Detected Width(mm),CV Detected Height(mm),CV Ratio Deviation,CV Method,CV Status" > "$dimensionSummaryFile"
 logfile="$outputFolder/processing_results.log"
 
 hashMark "Tombstone Info"
