@@ -15,6 +15,7 @@ Prints "Unknown" if classification is unavailable or fails.
 """
 
 import sys
+import os
 import base64
 import json
 import cv2
@@ -64,6 +65,13 @@ def classify(image_path):
             body=json.dumps(body)
         )
         result = json.loads(response["body"].read())
+        usage = result.get("usage", {})
+        in_tok = usage.get("input_tokens", 0)
+        out_tok = usage.get("output_tokens", 0)
+        log_path = os.environ.get("TOKEN_LOG_FILE")
+        if log_path:
+            with open(log_path, "a") as lf:
+                lf.write(f"{in_tok},{out_tok}\n")
         label = result["content"][0]["text"].strip().strip(".").strip()
         return label if label else "Unknown"
     except Exception as e:

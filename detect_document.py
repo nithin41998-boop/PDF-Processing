@@ -13,6 +13,7 @@ import cv2
 import numpy as np
 import argparse
 import sys
+import os
 import base64
 import json
 
@@ -26,7 +27,7 @@ ID_RATIOS = {"ID-1 Format": 85.60 / 53.98, "ID-3 Format": 125.00 / 88.00}
 MIN_AREA_FRACTION = 0.10
 MAX_AREA_FRACTION = 0.90
 MIN_COLOR_TRANSITION = 18.0
-WHOLE_IMAGE_TRUST_THRESHOLD = 5.0
+WHOLE_IMAGE_TRUST_THRESHOLD = 6.0
 
 
 def ratio_deviation(w, h):
@@ -272,6 +273,13 @@ def get_llm_rough_estimate(image_path):
             body=json.dumps(body)
         )
         result = json.loads(response["body"].read())
+        usage = result.get("usage", {})
+        in_tok = usage.get("input_tokens", 0)
+        out_tok = usage.get("output_tokens", 0)
+        log_path = os.environ.get("TOKEN_LOG_FILE")
+        if log_path:
+            with open(log_path, "a") as lf:
+                lf.write(f"{in_tok},{out_tok}\n")
         text = result["content"][0]["text"]
         text = text.strip().strip("`").replace("json", "", 1).strip()
         parsed = json.loads(text)
@@ -282,9 +290,9 @@ def get_llm_rough_estimate(image_path):
 
 def classify_size(width_mm, height_mm):
     ratio, closest_label, dev = ratio_deviation(width_mm, height_mm)
-    if dev < 2:
+    if dev < 4:
         status = "Pass"
-    elif dev <= 5:
+    elif dev <= 6:
         status = "Warning"
     else:
         status = "Fail"
@@ -363,7 +371,7 @@ def main():
         ratio, closest_label, dev, status = classify_size(width_mm, height_mm)
     else:
         ratio, closest_label, dev = ratio_deviation(px_w, px_h)
-        status = "Pass" if dev < 2 else ("Warning" if dev <= 5 else "Fail")
+        status = "Pass" if dev < 4 else ("Warning" if dev <= 6 else "Fail")
 
     print(f"{px_w:.0f},{px_h:.0f},{width_mm:.2f},{height_mm:.2f},{ratio:.4f},{closest_label},{dev:.2f},{status},{method}")
 

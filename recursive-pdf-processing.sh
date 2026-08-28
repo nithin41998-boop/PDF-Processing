@@ -277,8 +277,8 @@ processImageFile() {
                 local isoFormat=$(echo "$idDiff $passDiff" | awk '{print ($1<$2)?"ID-1 Format":"ID-3 Format"}')
                 local closestMatch=$(classifyDocumentLLM "$imgPath")
                 local sizeStatus="Pass"
-                local sizeIsPass=$(echo "$bestDiff" | awk '{print ($1<2)?1:0}')
-                local sizeIsWarn=$(echo "$bestDiff" | awk '{print ($1<=5)?1:0}')
+                local sizeIsPass=$(echo "$bestDiff" | awk '{print ($1<4)?1:0}')
+                local sizeIsWarn=$(echo "$bestDiff" | awk '{print ($1<=6)?1:0}')
                 if [ "$sizeIsPass" -eq 1 ]; then
                         sizeStatus="Pass"
                 elif [ "$sizeIsWarn" -eq 1 ]; then
@@ -344,8 +344,8 @@ checkImageDimensions() {
                                 local isoFormat=$(echo "$idDiff $passDiff" | awk '{print ($1<$2)?"ID-1 Format":"ID-3 Format"}')
                                 local closestMatch=$(classifyDocumentLLM "$pdfPath")
                                 local sizeStatus="Pass"
-                                local sizeIsPass=$(echo "$bestDiff" | awk '{print ($1<2)?1:0}')
-                                local sizeIsWarn=$(echo "$bestDiff" | awk '{print ($1<=5)?1:0}')
+                                local sizeIsPass=$(echo "$bestDiff" | awk '{print ($1<4)?1:0}')
+                                local sizeIsWarn=$(echo "$bestDiff" | awk '{print ($1<=6)?1:0}')
                                 if [ "$sizeIsPass" -eq 1 ]; then
                                         sizeStatus="Pass"
                                 elif [ "$sizeIsWarn" -eq 1 ]; then
@@ -472,6 +472,8 @@ if [ ! -z $folder ]; then
 fi
 
 mkdir $outputFolder
+export TOKEN_LOG_FILE="$outputFolder/token_usage.log"
+touch "$TOKEN_LOG_FILE"
 
 
 dimensionSummaryFile="$outputFolder/dimension_check_summary.csv"
@@ -784,6 +786,13 @@ done
 
 echo -e "\n###############################################################"
 echo -e "Log file written to: ${GREEN}'$logfile'.${NOCOLOUR}"
+if [ -s "$TOKEN_LOG_FILE" ]; then
+        totalInputTokens=$(awk -F, '{sum+=$1} END {print sum+0}' "$TOKEN_LOG_FILE")
+        totalOutputTokens=$(awk -F, '{sum+=$2} END {print sum+0}' "$TOKEN_LOG_FILE")
+        echo -e "\n${GREEN}###### LLM Token Usage Summary ######${NOCOLOUR}"
+        echo "Total input tokens: $totalInputTokens"
+        echo "Total output tokens: $totalOutputTokens"
+fi
 echo ""
 echo -e "${GREEN}###### Image Dimension Check Summary ######${NOCOLOUR}"
 if [ -f "$dimensionSummaryFile" ]; then
