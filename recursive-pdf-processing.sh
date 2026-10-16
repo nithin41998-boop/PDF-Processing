@@ -286,12 +286,16 @@ processImageFile() {
                 else
                         sizeStatus="Fail"
                 fi
-                local cvOutput=$(python3 "$SCRIPT_DIR/detect_document.py" "$imgPath" --dpi "$xppi" 2>/dev/null)
+                local cvOutput=$(python3 "$SCRIPT_DIR/detect_document.py" "$imgPath" --dpi "$xppi" --doc-type "$closestMatch" 2>/dev/null)
                 local cvWidthMM=$(echo "$cvOutput" | cut -d, -f3)
                 local cvHeightMM=$(echo "$cvOutput" | cut -d, -f4)
                 local cvRatioDev=$(echo "$cvOutput" | cut -d, -f7)
                 local cvMethod=$(echo "$cvOutput" | cut -d, -f9)
                 local cvStatus=$(echo "$cvOutput" | cut -d, -f8)
+                if [ -n "$cvStatus" ]; then
+                        bestDiff="$cvRatioDev"
+                        sizeStatus="$cvStatus"
+                fi
                 echo "$imgName,,,image,$width,$height,$imgColor,$imgComp,$imgBpc,$imgEnc,,,$xppi,$yppi,$sizeDisplay,$compRatio%,$widthMM,$heightMM,$imgRatio,$closestMatch,$bestDiff%,$sizeStatus,$cvWidthMM,$cvHeightMM,$cvRatioDev,$cvMethod,$cvStatus" >> "$dimensionSummaryFile"
         fi
 }
