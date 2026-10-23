@@ -1,0 +1,7 @@
+__pycache__/
+*.backup*
+*:Zone.Identifier
+check*.jpg
+bg_ai_test.jpg
+genuine_bg_test.jpg
+classify_documents.py
