@@ -11,6 +11,7 @@ budget first and retries once with a much larger one only when needed.
 """
 
 import os
+import sys
 import base64
 import cv2
 import numpy as np
@@ -64,11 +65,16 @@ def ask_luna(prompt, image_b64, first_budget, retry_budget):
             }],
         )
         _log_tokens(resp)
-        return resp.choices[0].message.content
+        choice = resp.choices[0]
+        # finish_reason "length" means the answer was cut off at the token limit
+        return choice.message.content, choice.finish_reason
 
-    content = call(first_budget)
-    if content is None or not content.strip():
-        content = call(retry_budget)
+    content, reason = call(first_budget)
+    if content is None or not content.strip() or reason == "length":
+        # empty answer (budget used by hidden reasoning) or a cut-off answer:
+        # try once more with the larger budget
+        content, reason = call(retry_budget)
     if content is None or not content.strip():
         return None
+    print("LUNA RAW:", repr(content.strip())[:800], file=sys.stderr)
     return content.strip()
